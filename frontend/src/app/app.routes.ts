@@ -1,0 +1,15 @@
+import { Routes } from '@angular/router';
+
+export const routes: Routes = [
+  {
+    path: '',
+    loadComponent: () => import('./shared/shell/shell.component').then(m => m.ShellComponent),
+    children: [
+      { path: '', redirectTo: 'pipeline', pathMatch: 'full' },
+      { path: 'pipeline', loadComponent: () => import('./features/pipeline-monitor/pipeline-monitor.component').then(m => m.PipelineMonitorComponent) },
+      { path: 'activity', loadComponent: () => import('./features/agent-activity/agent-activity.component').then(m => m.AgentActivityComponent) },
+      { path: 'review', loadComponent: () => import('./features/document-review/document-review.component').then(m => m.DocumentReviewComponent) },
+      { path: 'audit', loadComponent: () => import('./features/audit-trail/audit-trail.component').then(m => m.AuditTrailComponent) },
+    ],
+  },
+];

@@ -1,0 +1,12 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.git/
+.env
+settings.json
+contra_dev.db
+tests/
+.vscode/

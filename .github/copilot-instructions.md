@@ -20,7 +20,8 @@ Contra is an LLM-powered financial reconciliation pipeline: it ingests payment p
 | Agent Orchestration | LangGraph (StateGraph) | Agents are graph nodes; shared `ContraState` TypedDict; conditional edges enforce gates |
 | Agent LLM | LangChain BaseChatModel | All LLM calls through `backend/src/adapters/llm_adapter.py` only |
 | HITL | LangGraph `interrupt()` | Pause/resume at `Needs_Review`, `Human_Review`, `Exception_Review` |
-| Database | MSSQL + SQLAlchemy 2.x + pyodbc | Code-first ORM; `DATABASE_URL` env var; no raw SQL in business logic |
+| Database | MSSQL + SQLAlchemy 2.x + pymssql | Code-first ORM; `DATABASE_URL` env var; no raw SQL in business logic |
+| Deployment | Docker Compose | Backend + MSSQL; entrypoint auto-creates DB and runs Alembic migrations |
 | API contract | OpenAPI (FastAPI auto-gen) | Angular consumes only generated DTOs — never hand-written duplicate interfaces |
 
 ---
@@ -67,7 +68,16 @@ frontend/
 ## Build & Run Commands
 
 ```bash
-# Backend
+# Docker (recommended) — starts backend + MSSQL
+docker compose up --build
+
+# Docker (detached)
+docker compose up --build -d
+
+# Stop
+docker compose down
+
+# Backend (local development without Docker)
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt

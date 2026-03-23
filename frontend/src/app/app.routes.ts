@@ -10,6 +10,7 @@ export const routes: Routes = [
       { path: 'activity', loadComponent: () => import('./features/agent-activity/agent-activity.component').then(m => m.AgentActivityComponent) },
       { path: 'review', loadComponent: () => import('./features/document-review/document-review.component').then(m => m.DocumentReviewComponent) },
       { path: 'audit', loadComponent: () => import('./features/audit-trail/audit-trail.component').then(m => m.AuditTrailComponent) },
+      { path: 'settings', loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent) },
     ],
   },
 ];

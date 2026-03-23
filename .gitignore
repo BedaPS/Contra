@@ -232,3 +232,6 @@ frontend/src/generated/*.ts
 
 # Local database artifacts
 backend/contra_dev.db
+
+# LLM settings (contains API keys)
+backend/settings.json

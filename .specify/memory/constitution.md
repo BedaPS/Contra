@@ -1,12 +1,16 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version Change   : 2.0.0 → 2.1.0 (MINOR — Persistence Layer section added;
-                   Tech Stack updated with SQLAlchemy ORM + MSSQL via pyodbc)
+Version Change   : 2.1.0 → 2.2.0 (MINOR — Deployment section added;
+                   Docker Compose for backend + MSSQL; entrypoint with
+                   auto-migration; CORS_ORIGINS env var)
 Modified Principles : N/A — existing principles unchanged.
 Added Sections   :
-  - Persistence Layer — SQLAlchemy 2.x ORM with code-first models, MSSQL
-    database via pyodbc, DATABASE_URL configuration.
+  - Deployment — Docker Compose orchestration for backend + MSSQL.
+    Backend image built from `backend/Dockerfile`. Entrypoint creates
+    database and runs Alembic migrations before starting uvicorn.
+Modified Sections:
+  - Tech Stack Constraints — added CORS_ORIGINS env var, Docker deployment note.
 Removed Sections : N/A
 Templates Updated:
   ✅ .specify/templates/plan-template.md — No changes required
@@ -283,6 +287,41 @@ configured via the `DATABASE_URL` environment variable.
 `^`, `~`) are FORBIDDEN in `requirements.txt` and `package.json` for production
 dependencies.
 
+## Deployment
+
+**Docker Compose** is the standard deployment method. The root `docker-compose.yml`
+orchestrates all services.
+
+### Services
+
+| Service | Image / Build | Purpose |
+|---|---|---|
+| `db` | `mcr.microsoft.com/mssql/server:2022-latest` | MSSQL database |
+| `backend` | Built from `backend/Dockerfile` | FastAPI backend |
+
+### Backend Container Lifecycle
+
+1. The entrypoint script (`backend/entrypoint.sh`) runs automatically on container start.
+2. It creates the `contra` database in MSSQL if it does not exist.
+3. It runs `alembic upgrade head` to apply all pending migrations.
+4. It starts uvicorn on port 8000.
+
+### Deployment Rules
+
+- **No hardcoded credentials in images**: All secrets (`DATABASE_URL`, `LLM_API_KEY`,
+  `MSSQL_SA_PASSWORD`) MUST be passed via environment variables or Docker secrets.
+  Baking credentials into Dockerfile or source code is PROHIBITED.
+- **Migrations are automatic**: The entrypoint MUST run Alembic migrations before
+  starting the application. Manual migration steps are not acceptable in containerized
+  environments.
+- **Health checks**: The `db` service MUST include a health check. The `backend`
+  service MUST NOT start until the database is healthy (`depends_on` with
+  `condition: service_healthy`).
+- **CORS configuration**: CORS allowed origins are configured via the `CORS_ORIGINS`
+  environment variable (comma-separated list). Default: `http://localhost:4200`.
+- **Volume persistence**: Database data MUST be stored in a named Docker volume
+  (`mssql_data`) to survive container restarts.
+
 ## Governance
 
 **Supremacy**: This constitution supersedes all feature specs, implementation plans,
@@ -304,4 +343,4 @@ non-optional gate before any feature is marked Done. The state machine gate logi
 `backend/src/agents/auditor.py` is the canonical enforcement implementation. Tests
 covering each gate MUST run on every CI build.
 
-**Version**: 2.1.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23
+**Version**: 2.2.0 | **Ratified**: 2026-03-23 | **Last Amended**: 2026-03-23

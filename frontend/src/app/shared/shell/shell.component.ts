@@ -37,6 +37,12 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
               Audit Trail
             </a>
           </li>
+          <li>
+            <a routerLink="/settings" routerLinkActive="active">
+              <span class="nav-icon">⚙</span>
+              Settings
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
           <span class="version">v0.1.0 — AG-UI Protocol</span>

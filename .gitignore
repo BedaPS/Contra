@@ -218,5 +218,17 @@ backend/.env
 frontend/node_modules/
 frontend/dist/
 frontend/.angular/
+frontend/.angular/cache/
+frontend/tmp/
+frontend/out-tsc/
+frontend/bazel-out/
+frontend/coverage/
+frontend/.sass-cache/
+frontend/.history/
+frontend/npm-debug.log*
+frontend/yarn-error.log*
 frontend/src/generated/*.ts
 !frontend/src/generated/README.md
+
+# Local database artifacts
+backend/contra_dev.db

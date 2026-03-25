@@ -1,18 +1,21 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { AgUiEventService } from '../../core/services/ag-ui-event.service';
-import { PipelineDocument } from '../../core/models/ag-ui.models';
+import { PipelineDocument, PipelineTopologyNode, PipelineTopologyEdge } from '../../core/models/ag-ui.models';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-pipeline-monitor',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, FormsModule],
   template: `
     <div class="pipeline-page">
       <header class="page-header">
         <div>
           <h1>Pipeline Monitor</h1>
-          <p class="subtitle">Real-time document flow through the five-state reconciliation pipeline</p>
+          <p class="subtitle">Real-time document flow through the reconciliation pipeline</p>
         </div>
         <div class="controls">
           @if (svc.isRunning()) {
@@ -23,28 +26,126 @@ import { PipelineDocument } from '../../core/models/ag-ui.models';
         </div>
       </header>
 
-      <!-- Pipeline visualization -->
-      <div class="pipeline-track">
-        @for (stage of stages; track stage) {
-          <div class="stage" [class.completed]="isCompleted(stage)" [class.active]="isActive(stage)">
-            <div class="stage-dot">
-              @if (isCompleted(stage)) {
-                <span>✓</span>
-              } @else if (isActive(stage)) {
-                <span class="pulse">●</span>
+      <!-- Dynamic pipeline visualization -->
+      @if (topologyLoaded()) {
+        <div class="pipeline-track">
+          @for (node of pipelineNodes(); track node.id) {
+            <div class="stage" [class.completed]="isCompleted(node.label)" [class.active]="isActive(node.label)">
+              <div class="stage-dot">
+                @if (isCompleted(node.label)) {
+                  <span>✓</span>
+                } @else if (isActive(node.label)) {
+                  <span class="pulse">●</span>
+                } @else {
+                  <span>○</span>
+                }
+              </div>
+              <div class="stage-label">{{ node.label }}</div>
+            </div>
+            @if (!$last) {
+              <div class="stage-connector" [class.completed]="isCompleted(node.label)"></div>
+            }
+          }
+        </div>
+
+        <!-- Support nodes (human review, error handler) -->
+        <div class="support-track">
+          @for (node of supportNodes(); track node.id) {
+            <div class="support-node">
+              <span class="support-dot">◇</span>
+              <span class="support-label">{{ node.label }}</span>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="pipeline-track loading">
+          <span class="loading-text">Loading pipeline topology…</span>
+        </div>
+      }
+
+      <!-- Spreadsheet Exchange panel — always visible -->
+      <div class="exchange-panel" [class.exchange-paused]="spreadsheetReviewPending()">
+        <div class="exchange-header">
+          <h2>📊 Spreadsheet Exchange</h2>
+          @if (spreadsheetReviewPending()) {
+            <span class="exchange-badge paused">⏸ Pipeline Paused — Review Required</span>
+          } @else if (svc.isRunning() && !latestSpreadsheet()) {
+            <span class="exchange-badge building">● Building…</span>
+          }
+        </div>
+        <div class="exchange-body">
+          <div class="exchange-card" [class.disabled]="!latestSpreadsheet()">
+            <div class="exchange-card-icon">⬇</div>
+            <div class="exchange-card-content">
+              <h3>Download</h3>
+              @if (latestSpreadsheet()) {
+                <p class="exchange-filename">{{ latestSpreadsheet() }}</p>
+                <button class="btn btn-download" (click)="downloadSpreadsheet(latestSpreadsheet()!)">
+                  Download Spreadsheet
+                </button>
               } @else {
-                <span>○</span>
+                <p class="exchange-hint">No spreadsheet available yet — run the pipeline to generate one</p>
               }
             </div>
-            <div class="stage-label">{{ formatStage(stage) }}</div>
           </div>
-          @if (!$last) {
-            <div class="stage-connector" [class.completed]="isCompleted(stage)"></div>
-          }
-        }
+          <div class="exchange-card" [class.disabled]="!latestSpreadsheet()">
+            <div class="exchange-card-icon">⬆</div>
+            <div class="exchange-card-content">
+              <h3>Upload Corrected</h3>
+              <p class="exchange-hint">Upload a revised .xlsx to replace the current spreadsheet</p>
+              @if (latestSpreadsheet()) {
+                <label class="btn btn-upload" for="exchangeUpload">
+                  Choose File
+                </label>
+                <input
+                  id="exchangeUpload"
+                  type="file"
+                  accept=".xlsx"
+                  (change)="onFileSelected($event)"
+                  style="display:none"
+                />
+              }
+              @if (uploadedFileName()) {
+                <span class="upload-name">✓ {{ uploadedFileName() }}</span>
+              }
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Live event feed -->
+      <!-- HITL spreadsheet review -->
+      @if (spreadsheetReviewPending()) {
+        <div class="review-panel">
+          <div class="review-header">
+            <span class="review-icon">⏸</span>
+            <div>
+              <h2>Approve or Reject</h2>
+              <p class="review-subtitle">Review the spreadsheet above, then approve to continue matching or reject to stop</p>
+            </div>
+          </div>
+
+          <div class="review-form">
+            <div class="form-group">
+              <label for="reviewerId">Reviewer ID</label>
+              <input id="reviewerId" type="text" [(ngModel)]="reviewerId" placeholder="e.g. jane.doe" />
+            </div>
+            <div class="form-group">
+              <label for="reviewRationale">Rationale</label>
+              <input id="reviewRationale" type="text" [(ngModel)]="reviewRationale" placeholder="Optional note" />
+            </div>
+          </div>
+
+          <div class="review-buttons">
+            <button class="btn btn-approve" (click)="approveSpreadsheet()" [disabled]="!reviewerId">
+              ✓ Approve &amp; Continue
+            </button>
+            <button class="btn btn-reject" (click)="rejectSpreadsheet()" [disabled]="!reviewerId">
+              ✗ Reject
+            </button>
+          </div>
+        </div>
+      }
+
       @if (svc.isRunning() || svc.messages().length > 0) {
         <div class="live-feed">
           <h2>
@@ -105,6 +206,12 @@ import { PipelineDocument } from '../../core/models/ag-ui.models';
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 2rem;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     h1 {
@@ -304,7 +411,7 @@ import { PipelineDocument } from '../../core/models/ag-ui.models';
 
     .state-finalized .doc-state-badge { background: #1a4731; color: #2ecc71; }
     .state-matched .doc-state-badge { background: #1a3147; color: #3498db; }
-    .state-pii-redacted .doc-state-badge { background: #2d2d47; color: #a29bfe; }
+    .state-enriched .doc-state-badge { background: #2d2d47; color: #a29bfe; }
     .state-needs-review .doc-state-badge { background: #4a3520; color: #f39c12; }
     .state-human-review .doc-state-badge { background: #4a2020; color: #e74c3c; }
     .state-ingested .doc-state-badge { background: #2a2a3e; color: #8888a0; }
@@ -330,32 +437,420 @@ import { PipelineDocument } from '../../core/models/ag-ui.models';
       color: #f39c12;
       line-height: 1.4;
     }
+
+    /* Support node track */
+    .support-track {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 2rem;
+      padding: 0.75rem 1rem;
+    }
+
+    .support-node {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: #6e6e8a;
+    }
+
+    .support-dot {
+      color: #f39c12;
+      font-size: 0.9rem;
+    }
+
+    .support-label {
+      color: #8888a0;
+    }
+
+    /* Spreadsheet review panel */
+    .review-panel {
+      background: #111118;
+      border: 2px solid #f39c12;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .review-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .review-icon { font-size: 1.5rem; }
+
+    .review-header h2 {
+      color: #f39c12;
+      margin: 0;
+    }
+
+    .review-subtitle {
+      color: #8888a0;
+      font-size: 0.8rem;
+      margin: 0.25rem 0 0;
+    }
+
+    .review-actions-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-download {
+      background: #1a3147;
+      color: #3498db;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+    }
+    .btn-download:hover { background: #254a6b; }
+
+    .upload-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-upload {
+      background: #2d2d47;
+      color: #a29bfe;
+      cursor: pointer;
+      padding: 0.5rem 1rem;
+    }
+    .btn-upload:hover { background: #3a3a5e; }
+
+    .upload-name {
+      font-size: 0.75rem;
+      color: #00b894;
+    }
+
+    .review-form {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .review-form .form-group {
+      flex: 1;
+    }
+
+    .review-form label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #8888a0;
+      margin-bottom: 0.375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .review-form input[type="text"] {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: #0a0a0f;
+      border: 1px solid #2a2a3e;
+      border-radius: 0.5rem;
+      color: #e0e0e6;
+      font-size: 0.8rem;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .review-form input[type="text"]:focus { border-color: #6c5ce7; }
+
+    .review-buttons {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn-approve {
+      background: #1a3520;
+      color: #2ecc71;
+      border: 1px solid #2d4731;
+    }
+    .btn-approve:hover:not(:disabled) { background: #2d4731; }
+    .btn-approve:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-reject {
+      background: #2a1515;
+      color: #e74c3c;
+      border: 1px solid #4a2020;
+    }
+    .btn-reject:hover:not(:disabled) { background: #4a2020; }
+    .btn-reject:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Loading state */
+    .pipeline-track.loading {
+      justify-content: center;
+      min-height: 80px;
+    }
+
+    .loading-text {
+      color: #6e6e8a;
+      font-size: 0.875rem;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    /* Spreadsheet exchange panel */
+    .exchange-panel {
+      background: #111118;
+      border: 1px solid #1e1e2e;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .exchange-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+
+    .exchange-header h2 { margin: 0; }
+
+    .exchange-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.25rem 0.6rem;
+      border-radius: 0.25rem;
+      letter-spacing: 0.04em;
+    }
+
+    .exchange-badge.paused {
+      background: #4a3520;
+      color: #f39c12;
+    }
+
+    .exchange-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .exchange-card {
+      display: flex;
+      gap: 1rem;
+      background: #0d0d14;
+      border: 1px solid #1e1e2e;
+      border-radius: 0.625rem;
+      padding: 1.25rem;
+    }
+
+    .exchange-card-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+      width: 2.5rem;
+      height: 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a28;
+      border-radius: 0.5rem;
+    }
+
+    .exchange-card-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .exchange-card-content h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #d0d0e0;
+      margin: 0;
+    }
+
+    .exchange-filename {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      color: #8888a0;
+      margin: 0;
+      word-break: break-all;
+    }
+
+    .exchange-panel.exchange-paused {
+      border-color: #f39c12;
+      border-width: 2px;
+    }
+
+    .exchange-badge.building {
+      background: #2d2d47;
+      color: #a29bfe;
+    }
+
+    .exchange-card.disabled {
+      opacity: 0.5;
+    }
+
+    .review-section {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #1e1e2e;
+    }
   `],
 })
 export class PipelineMonitorComponent implements OnInit {
   readonly svc = inject(AgUiEventService);
-  readonly stages = ['Ingested', 'Parsed', 'PII_Redacted', 'Matched', 'Finalized'];
+  private readonly http = inject(HttpClient);
+  readonly pipelineNodes = signal<PipelineTopologyNode[]>([]);
+  readonly supportNodes = signal<PipelineTopologyNode[]>([]);
+  readonly topologyLoaded = signal(false);
   readonly documents = signal<PipelineDocument[]>([]);
 
-  async ngOnInit(): Promise<void> {
-    const docs = await this.svc.loadDocuments();
-    this.documents.set(docs);
+  // Spreadsheet review state
+  readonly uploadedFileName = signal('');
+  private uploadedFilePath = '';
+  reviewerId = '';
+  reviewRationale = '';
+
+  readonly latestSpreadsheet = signal<string | null>(null);
+
+  constructor() {
+    // Pick up spreadsheet filename from HITL interrupt
+    effect(() => {
+      const interrupt = this.svc.hitlInterrupt();
+      if (!interrupt) return;
+      const ctx = interrupt['context'] as Record<string, unknown> | undefined;
+      const fullPath = (ctx?.['spreadsheet_path'] as string) ?? '';
+      const name = fullPath.split('/').pop()?.split('\\').pop() ?? '';
+      if (name) this.latestSpreadsheet.set(name);
+    });
+
+    // Re-fetch spreadsheet list when pipeline state changes (Build Spreadsheet completed)
+    effect(() => {
+      const state = this.svc.pipelineState();
+      if (state?.completedSteps?.includes('Build Spreadsheet')) {
+        this.loadSpreadsheets();
+      }
+    });
   }
 
-  isCompleted(stage: string): boolean {
-    return this.svc.pipelineState()?.completedSteps?.includes(stage) ?? false;
-  }
-
-  isActive(stage: string): boolean {
+  /** Show the exchange panel when Build Spreadsheet step is active or beyond */
+  showExchangePanel(): boolean {
+    // Always show if we already have a spreadsheet
+    if (this.latestSpreadsheet()) return true;
+    // Show if HITL interrupt is pending
+    if (this.spreadsheetReviewPending()) return true;
+    // Show if Build Spreadsheet step is active or completed
     const state = this.svc.pipelineState();
     if (!state) return false;
-    return state.currentStep !== undefined &&
-      !state.completedSteps.includes(stage) &&
-      this.stages.indexOf(stage) === state.completedSteps.length;
+    const steps = state.completedSteps ?? [];
+    const labels = this.pipelineNodes().map(n => n.label);
+    const buildIdx = labels.indexOf('Build Spreadsheet');
+    if (buildIdx < 0) return false;
+    return steps.length >= buildIdx;
   }
 
-  formatStage(stage: string): string {
-    return stage.replace('_', ' ');
+  spreadsheetReviewPending(): boolean {
+    const interrupt = this.svc.hitlInterrupt();
+    if (!interrupt) return false;
+    const ctx = interrupt['context'] as Record<string, unknown> | undefined;
+    return !!ctx?.['spreadsheet_path'];
+  }
+
+  async ngOnInit(): Promise<void> {
+    const [topology, docs] = await Promise.all([
+      this.svc.loadTopology(),
+      this.svc.loadDocuments(),
+    ]);
+    this.pipelineNodes.set(topology.nodes);
+    this.supportNodes.set(topology.supportNodes);
+    this.topologyLoaded.set(true);
+    this.documents.set(docs);
+    this.loadSpreadsheets();
+  }
+
+  private loadSpreadsheets(): void {
+    this.http.get<{ filename: string }[]>('/api/spreadsheet/list').subscribe({
+      next: (files) => {
+        if (files.length > 0) {
+          this.latestSpreadsheet.set(files[0].filename);
+        }
+      },
+    });
+  }
+
+  spreadsheetFilename(): string {
+    const interrupt = this.svc.hitlInterrupt();
+    const ctx = interrupt?.['context'] as Record<string, unknown> | undefined;
+    const fullPath = (ctx?.['spreadsheet_path'] as string) ?? '';
+    return fullPath.split('/').pop()?.split('\\').pop() ?? '';
+  }
+
+  downloadSpreadsheet(filename: string): void {
+    if (!filename) return;
+    const url = `${environment.apiBaseUrl}/spreadsheet/download/${encodeURIComponent(filename)}`;
+    this.http.get(url, { responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      },
+      error: () => this.svc.error.set('Spreadsheet download failed'),
+    });
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+
+    this.http.post<{ path: string; filename: string }>('/api/spreadsheet/upload', formData).subscribe({
+      next: (res) => {
+        this.uploadedFileName.set(res.filename);
+        this.uploadedFilePath = res.path;
+      },
+      error: () => this.uploadedFileName.set('Upload failed'),
+    });
+  }
+
+  approveSpreadsheet(): void {
+    const review: Record<string, unknown> = {
+      action: this.uploadedFilePath ? 'upload' : 'approve',
+      reviewer_id: this.reviewerId,
+      rationale: this.reviewRationale,
+    };
+    if (this.uploadedFilePath) {
+      review['uploaded_path'] = this.uploadedFilePath;
+    }
+    const threadId = this.svc.threadId() ?? '';
+    this.svc.hitlInterrupt.set(null);
+    this.svc.resumePipeline(threadId, review);
+  }
+
+  rejectSpreadsheet(): void {
+    const review = {
+      action: 'reject',
+      reviewer_id: this.reviewerId,
+      rationale: this.reviewRationale,
+    };
+    const threadId = this.svc.threadId() ?? '';
+    this.svc.hitlInterrupt.set(null);
+    this.svc.resumePipeline(threadId, review);
+  }
+
+  isCompleted(label: string): boolean {
+    return this.svc.pipelineState()?.completedSteps?.includes(label) ?? false;
+  }
+
+  isActive(label: string): boolean {
+    const state = this.svc.pipelineState();
+    if (!state) return false;
+    const labels = this.pipelineNodes().map(n => n.label);
+    return state.currentStep !== undefined &&
+      !state.completedSteps.includes(label) &&
+      labels.indexOf(label) === state.completedSteps.length;
   }
 
   formatTime(ts: number): string {

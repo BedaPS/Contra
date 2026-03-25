@@ -27,6 +27,19 @@ class BankTransactionDict(TypedDict, total=False):
     reference_id: str | None
 
 
+class FileRecord(TypedDict, total=False):
+    """Per-file tracking record for batch processing."""
+
+    file_id: str
+    source_path: str
+    work_path: str
+    mime_type: str
+    status: str  # pending | ocr_done | enriched | error
+    ocr_fields: dict[str, dict[str, Any]]
+    ocr_json_path: str | None
+    error: str | None
+
+
 class ContraState(TypedDict, total=False):
     """Shared state flowing through the reconciliation graph.
 
@@ -40,6 +53,16 @@ class ContraState(TypedDict, total=False):
     source_email: Annotated[str, _replace]
     attachment_mime_type: Annotated[str, _replace]
     raw_text: Annotated[str | None, _replace]
+
+    # File tracking (single-file — kept for backward compat)
+    source_file_path: Annotated[str | None, _replace]
+    work_file_path: Annotated[str | None, _replace]
+
+    # ── Batch processing fields ──
+    batch_id: Annotated[str | None, _replace]
+    file_records: Annotated[list[FileRecord], _replace]
+    spreadsheet_path: Annotated[str | None, _replace]
+    review_spreadsheet_path: Annotated[str | None, _replace]
 
     # OCR extracted fields: {field_name: {"value": str|None, "confidence_score": float}}
     ocr_fields: Annotated[dict[str, dict[str, Any]], _replace]

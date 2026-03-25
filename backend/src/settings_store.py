@@ -29,6 +29,12 @@ def _defaults_from_env() -> dict:
         defaults["model"] = val
     if val := os.getenv("LLM_BASE_URL"):
         defaults["base_url"] = val
+    if val := os.getenv("SOURCE_DIRECTORY"):
+        defaults["source_directory"] = val
+    if val := os.getenv("WORK_DIRECTORY"):
+        defaults["work_directory"] = val
+    if val := os.getenv("REVIEW_DIRECTORY"):
+        defaults["review_directory"] = val
     return defaults
 
 

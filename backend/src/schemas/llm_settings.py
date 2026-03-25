@@ -34,6 +34,18 @@ class LLMSettings(BaseModel):
         le=2.0,
         description="Sampling temperature.",
     )
+    source_directory: str = Field(
+        default="",
+        description="Source directory where incoming payment proof files are placed.",
+    )
+    work_directory: str = Field(
+        default="",
+        description="Work directory where files are copied for processing.",
+    )
+    review_directory: str = Field(
+        default="",
+        description="Shared directory where spreadsheets are placed for human review.",
+    )
 
 
 class LLMSettingsResponse(BaseModel):
@@ -44,3 +56,6 @@ class LLMSettingsResponse(BaseModel):
     model: str
     base_url: str
     temperature: float
+    source_directory: str
+    work_directory: str
+    review_directory: str

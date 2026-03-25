@@ -8,6 +8,9 @@ interface LLMSettingsResponse {
   model: string;
   base_url: string;
   temperature: number;
+  source_directory: string;
+  work_directory: string;
+  review_directory: string;
 }
 
 interface LLMSettingsPayload {
@@ -16,6 +19,9 @@ interface LLMSettingsPayload {
   model: string;
   base_url: string;
   temperature: number;
+  source_directory: string;
+  work_directory: string;
+  review_directory: string;
 }
 
 @Component({
@@ -119,6 +125,44 @@ interface LLMSettingsPayload {
           }
         </div>
       </div>
+
+      <div class="settings-card" style="margin-top: 2rem;">
+        <h2 class="section-title">Directory Settings</h2>
+        <p class="subtitle">Configure source and work directories for file ingestion</p>
+
+        <div class="form-group">
+          <label for="sourceDirectory">Source Directory</label>
+          <input
+            id="sourceDirectory"
+            type="text"
+            [(ngModel)]="sourceDirectory"
+            placeholder="e.g. /data/incoming or C:\\Incoming"
+          />
+          <span class="hint">Directory where incoming payment proof files are placed</span>
+        </div>
+
+        <div class="form-group">
+          <label for="workDirectory">Work Directory</label>
+          <input
+            id="workDirectory"
+            type="text"
+            [(ngModel)]="workDirectory"
+            placeholder="e.g. /data/work or C:\\Work"
+          />
+          <span class="hint">Directory where files are copied for pipeline processing</span>
+        </div>
+
+        <div class="form-group">
+          <label for="reviewDirectory">Review Directory</label>
+          <input
+            id="reviewDirectory"
+            type="text"
+            [(ngModel)]="reviewDirectory"
+            placeholder="e.g. /data/review or C:\\Review"
+          />
+          <span class="hint">Shared directory where spreadsheets are placed for human review</span>
+        </div>
+      </div>
     </div>
   `,
   styles: [`
@@ -137,6 +181,13 @@ interface LLMSettingsPayload {
       color: #8888a0;
       font-size: 0.875rem;
       margin: 0;
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #e0e0e6;
+      margin: 0 0 0.25rem;
     }
 
     .settings-card {
@@ -269,6 +320,9 @@ export class SettingsComponent implements OnInit {
   baseUrl = '';
   temperature = 0;
   showKey = false;
+  sourceDirectory = '';
+  workDirectory = '';
+  reviewDirectory = '';
 
   apiKeySet = signal(false);
   saving = signal(false);
@@ -324,6 +378,9 @@ export class SettingsComponent implements OnInit {
       model: this.model || this.defaultModelFor(this.provider),
       base_url: this.baseUrl,
       temperature: this.temperature,
+      source_directory: this.sourceDirectory,
+      work_directory: this.workDirectory,
+      review_directory: this.reviewDirectory,
     };
 
     this.http.put<LLMSettingsResponse>('/api/settings/llm', payload).subscribe({
@@ -354,6 +411,9 @@ export class SettingsComponent implements OnInit {
     this.model = res.model;
     this.baseUrl = res.base_url;
     this.temperature = res.temperature;
+    this.sourceDirectory = res.source_directory;
+    this.workDirectory = res.work_directory;
+    this.reviewDirectory = res.review_directory;
     if (!this.apiKey && res.api_key_set) {
       this.apiKey = '';
     }

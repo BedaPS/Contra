@@ -55,6 +55,23 @@ export interface AuditEntry {
   confidence_scores: Record<string, number>;
 }
 
+export interface PipelineTopologyNode {
+  id: string;
+  label: string;
+}
+
+export interface PipelineTopologyEdge {
+  source: string;
+  target: string;
+  condition?: string;
+}
+
+export interface PipelineTopology {
+  nodes: PipelineTopologyNode[];
+  supportNodes: PipelineTopologyNode[];
+  edges: PipelineTopologyEdge[];
+}
+
 export interface AgentStep {
   stepName: string;
   stepId: string;

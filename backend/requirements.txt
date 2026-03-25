@@ -17,3 +17,4 @@ pytest-asyncio==1.0.0
 sqlalchemy==2.0.48
 pymssql==2.3.13
 alembic==1.18.4
+openpyxl==3.1.5

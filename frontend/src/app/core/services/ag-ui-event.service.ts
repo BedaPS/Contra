@@ -8,6 +8,7 @@ import {
   AgentToolCall,
   PipelineDocument,
   AuditEntry,
+  PipelineTopology,
 } from '../models/ag-ui.models';
 
 /**
@@ -19,11 +20,13 @@ export class AgUiEventService {
   // ── Signals ──
   readonly isRunning = signal(false);
   readonly runId = signal<string | null>(null);
+  readonly threadId = signal<string | null>(null);
   readonly events = signal<AgUiEvent[]>([]);
   readonly steps = signal<AgentStep[]>([]);
   readonly pipelineState = signal<PipelineState | null>(null);
   readonly messages = signal<AgentMessage[]>([]);
   readonly error = signal<string | null>(null);
+  readonly hitlInterrupt = signal<Record<string, unknown> | null>(null);
 
   // ── Computed ──
   readonly currentStep = computed(() => {
@@ -78,11 +81,13 @@ export class AgUiEventService {
   reset(): void {
     this.stopRun();
     this.runId.set(null);
+    this.threadId.set(null);
     this.events.set([]);
     this.steps.set([]);
     this.pipelineState.set(null);
     this.messages.set([]);
     this.error.set(null);
+    this.hitlInterrupt.set(null);
     this.activeMessages.clear();
     this.activeToolCalls.clear();
   }
@@ -91,6 +96,7 @@ export class AgUiEventService {
     switch (event['type']) {
       case 'RUN_STARTED':
         this.runId.set(event['runId'] as string);
+        this.threadId.set((event['threadId'] as string) ?? null);
         break;
 
       case 'STEP_STARTED':
@@ -215,6 +221,11 @@ export class AgUiEventService {
         break;
       }
 
+      case 'HITL_INTERRUPT': {
+        this.hitlInterrupt.set(event as Record<string, unknown>);
+        break;
+      }
+
       case 'RUN_FINISHED':
         this.isRunning.set(false);
         this.eventSource?.close();
@@ -240,5 +251,56 @@ export class AgUiEventService {
   async loadAuditEntries(): Promise<AuditEntry[]> {
     const res = await fetch(`${environment.apiBaseUrl}/audit/entries`);
     return res.json();
+  }
+
+  async loadTopology(): Promise<PipelineTopology> {
+    const res = await fetch(`${environment.apiBaseUrl}/pipeline/topology`);
+    return res.json();
+  }
+
+  /**
+   * Resume a paused pipeline (HITL interrupt) by POSTing review data.
+   * The backend streams resumed events back via SSE.
+   */
+  resumePipeline(threadId: string, review: Record<string, unknown>): void {
+    this.isRunning.set(true);
+    this.error.set(null);
+
+    const url = `${environment.apiBaseUrl}/agents/resume?thread_id=${encodeURIComponent(threadId)}`;
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(review),
+    }).then(async (response) => {
+      if (!response.ok || !response.body) {
+        this.error.set('Failed to resume pipeline');
+        this.isRunning.set(false);
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const parsed: AgUiEvent = JSON.parse(line.slice(6));
+            this.events.update(prev => [...prev, parsed]);
+            this.processEvent(parsed);
+          }
+        }
+      }
+    }).catch(() => {
+      this.error.set('Resume connection failed');
+      this.isRunning.set(false);
+    });
   }
 }

@@ -65,7 +65,9 @@ DEFAULT_INPUT: ContraState = {
 _NODE_LABELS = {
     "ingest": "ingestion_agent",
     "ocr_extract": "ocr_agent",
-    "pii_redact": "pii_redaction",
+    "enrich": "enrichment_agent",
+    "build_spreadsheet": "spreadsheet_builder",
+    "spreadsheet_review": "spreadsheet_review",
     "match": "auditor_agent",
     "finalize": "finalization",
     "human_review": "human_review",
@@ -81,13 +83,27 @@ def _event(event_type: str, data: dict) -> str:
 
 def _state_snapshot(state: dict[str, Any], node_name: str) -> dict:
     """Build a STATE_SNAPSHOT payload from the current graph state."""
-    pipeline = ["Ingested", "Parsed", "PII_Redacted", "Matched", "Finalized"]
+    from src.graph.pipeline import HAPPY_PATH_NODES
+    pipeline = [n["label"] for n in HAPPY_PATH_NODES]
+    node_ids = [n["id"] for n in HAPPY_PATH_NODES]
     doc_state = state.get("document_state", "")
 
-    completed = []
-    for s in pipeline:
-        completed.append(s)
-        if s == doc_state:
+    # Map document states to node ids for completion tracking
+    _state_to_node = {
+        "Ingested": "ingest",
+        "Parsed": "ocr_extract",
+        "Enriched": "enrich",
+        "Spreadsheet_Built": "build_spreadsheet",
+        "Spreadsheet_Approved": "spreadsheet_review",
+        "Matched": "match",
+        "Finalized": "finalize",
+    }
+
+    current_node = _state_to_node.get(doc_state, "")
+    completed: list[str] = []
+    for nid, label in zip(node_ids, pipeline):
+        completed.append(label)
+        if nid == current_node:
             break
 
     return {
@@ -157,6 +173,26 @@ async def _stream_graph_events(
 
     except Exception as exc:
         yield _event("RUN_ERROR", {"runId": run_id, "error": str(exc)})
+
+    # Check if the graph is suspended at an interrupt (HITL)
+    try:
+        graph_state = pipeline.get_state(config)
+        if graph_state and graph_state.next:
+            # Graph is paused — emit interrupt event with context
+            interrupt_data: dict[str, Any] = {
+                "runId": run_id,
+                "threadId": thread_id,
+                "pausedBefore": list(graph_state.next),
+            }
+            # Extract interrupt context from tasks if available
+            if hasattr(graph_state, "tasks") and graph_state.tasks:
+                for task in graph_state.tasks:
+                    if hasattr(task, "interrupts") and task.interrupts:
+                        interrupt_data["context"] = task.interrupts[0].value
+                        break
+            yield _event("HITL_INTERRUPT", interrupt_data)
+    except Exception:
+        pass  # Non-critical — proceed to RUN_FINISHED
 
     yield _event("RUN_FINISHED", {"runId": run_id, "threadId": thread_id})
 
@@ -228,6 +264,24 @@ async def resume_pipeline(thread_id: str, review: dict[str, Any]):
         except Exception as exc:
             yield _event("RUN_ERROR", {"runId": run_id, "error": str(exc)})
 
+        # Check for another interrupt after resume
+        try:
+            graph_state = pipeline.get_state(config)
+            if graph_state and graph_state.next:
+                interrupt_data: dict[str, Any] = {
+                    "runId": run_id,
+                    "threadId": thread_id,
+                    "pausedBefore": list(graph_state.next),
+                }
+                if hasattr(graph_state, "tasks") and graph_state.tasks:
+                    for task in graph_state.tasks:
+                        if hasattr(task, "interrupts") and task.interrupts:
+                            interrupt_data["context"] = task.interrupts[0].value
+                            break
+                yield _event("HITL_INTERRUPT", interrupt_data)
+        except Exception:
+            pass
+
         yield _event("RUN_FINISHED", {"runId": run_id, "threadId": thread_id})
 
     return StreamingResponse(
@@ -287,7 +341,7 @@ async def list_documents():
             "account_name": "Umbrella Corp",
             "amount": 5200.00,
             "currency": "ZAR",
-            "state": "PII_Redacted",
+            "state": "Enriched",
             "payment_date": "2026-03-21",
             "created_at": "2026-03-21T07:45:00Z",
         },
@@ -320,14 +374,14 @@ async def list_audit_entries():
             "confidence_scores": {"account_name": 0.97, "amount": 0.99, "payment_date": 0.96},
         },
         {
-            "agent": "ingestion_agent",
+            "agent": "enrichment_agent",
             "timestamp": "2026-03-20T08:14:23Z",
             "input_hash": "b7c8d9...e0f1",
             "output_hash": "c1d2e3...f4g5",
             "state_from": "Parsed",
-            "state_to": "PII_Redacted",
+            "state_to": "Enriched",
             "decision": "ADVANCE",
-            "rationale": "Email masked to [REDACTED]. Raw text cleared.",
+            "rationale": "Fields normalised. Amount cleaned, date standardised to ISO format.",
             "confidence_scores": {},
         },
         {
@@ -335,7 +389,7 @@ async def list_audit_entries():
             "timestamp": "2026-03-20T08:14:25Z",
             "input_hash": "c1d2e3...f4g5",
             "output_hash": "d5e6f7...g8h9",
-            "state_from": "PII_Redacted",
+            "state_from": "Enriched",
             "state_to": "Matched",
             "decision": "MATCHED",
             "rationale": "Bank Ref ID FNB-REF-8843921 exact match with BNK-TXN-991204. Delta $0.00.",
@@ -357,7 +411,7 @@ async def list_audit_entries():
             "timestamp": "2026-03-20T10:30:50Z",
             "input_hash": "g5h6i7...j8k9",
             "output_hash": "h9i0j1...k2l3",
-            "state_from": "PII_Redacted",
+            "state_from": "Enriched",
             "state_to": "Human_Review",
             "decision": "LOCKED",
             "rationale": "Duplicate candidates: BNK-TXN-993401 and BNK-TXN-993402 identical. Both LOCKED.",

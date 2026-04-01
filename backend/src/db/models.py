@@ -15,6 +15,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.db.base import Base
 
 
+class AppSettingModel(Base):
+    """Key-value application settings stored in the database."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
 class DocumentModel(Base):
     """Persisted document flowing through the reconciliation pipeline."""
 

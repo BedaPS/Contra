@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import router
 from src.api.agent_events import router as agent_router
+from src.settings_store import seed_defaults
 
 app = FastAPI(
     title="Contra",
@@ -32,3 +33,6 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(agent_router)
+
+# Seed default settings into the database on startup
+seed_defaults()

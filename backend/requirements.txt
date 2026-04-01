@@ -18,3 +18,7 @@ sqlalchemy==2.0.48
 pymssql==2.3.13
 alembic==1.18.4
 openpyxl==3.1.5
+pymupdf==1.26.1
+Pillow==11.2.1
+PyYAML==6.0.2
+python-dateutil==2.9.0.post0

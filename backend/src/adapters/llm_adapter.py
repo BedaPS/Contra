@@ -120,4 +120,23 @@ class LLMAdapter:
         result = model.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
         return {"content": result.content, "usage": {}}
 
+    def invoke_vision(self, prompt: str, images: list[str]) -> str:
+        """Invoke the vision model with a text prompt and a list of base64-encoded PNG images.
+
+        Returns the raw string response (JSON expected by the caller).
+        All vendor SDK calls are mediated through BaseChatModel (constitution G8).
+        """
+        from langchain_core.messages import HumanMessage
+
+        content: list[dict] = [{"type": "text", "text": prompt}]
+        for b64 in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            })
+
+        model = self.get_chat_model()
+        message = HumanMessage(content=content)
+        response = model.invoke([message])
+        return str(response.content)
 

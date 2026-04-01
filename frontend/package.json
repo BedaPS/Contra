@@ -7,7 +7,10 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "generate:api": "openapi-generator-cli generate -i http://localhost:8000/openapi.json -g typescript-angular -o src/generated --additional-properties=ngVersion=21"
+    "generate:api": "openapi-generator-cli generate -i http://localhost:8000/openapi.json -g typescript-angular -o src/generated --additional-properties=ngVersion=21",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "private": true,
   "packageManager": "npm@10.9.4",
@@ -28,6 +31,7 @@
     "@angular/cli": "21.2.3",
     "@angular/compiler-cli": "21.2.5",
     "@openapitools/openapi-generator-cli": "2.16.3",
+    "@playwright/test": "^1.50.1",
     "jsdom": "28.0.0",
     "prettier": "3.8.1",
     "typescript": "5.9.2",

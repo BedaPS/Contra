@@ -38,6 +38,18 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
             </a>
           </li>
           <li>
+            <a routerLink="/runs" routerLinkActive="active">
+              <span class="nav-icon">⊞</span>
+              Run History
+            </a>
+          </li>
+          <li>
+            <a routerLink="/results" routerLinkActive="active">
+              <span class="nav-icon">⊟</span>
+              Results
+            </a>
+          </li>
+          <li>
             <a routerLink="/settings" routerLinkActive="active">
               <span class="nav-icon">⚙</span>
               Settings

@@ -1,0 +1,38 @@
+context_hint: |
+  This document is of an unknown or unclassified type. Extract all 14 payment
+  fields that can be found anywhere in the document. Apply best-effort extraction
+  and assign lower confidence scores reflecting the uncertainty of field locations.
+  Return ONLY valid JSON. No prose. The JSON must conform to the extraction schema.
+
+field_hints:
+  customer_name: "Full name of the payer, customer, or sender if found."
+  account_number: "Bank account number if visible. Include all digits exactly as shown."
+  payee: "Name of the payment recipient or beneficiary if found."
+  payment_id: "Any unique transaction ID, reference number, or confirmation code."
+  payment_method: "Payment method if identifiable: EFT, CASH, CHEQUE, DIRECT_DEPOSIT, or CARD."
+  payment_date: "Any date that appears to be a payment date. Will be normalised to YYYY-MM-DD."
+  invoice_number: "Invoice or document number if present."
+  reference_doc_number: "Any additional reference document number if present."
+  amount_paid: "Any amount that appears to be a payment total. CRITICAL — extract if at all possible."
+  currency: "ISO 4217 currency code or symbol if identifiable."
+  deductions: "Any deduction or adjustment amounts found, as a numeric value."
+  deduction_type: "Reason for deductions if mentioned."
+  notes: "Any additional text that provides payment context or remarks."
+
+confidence_thresholds:
+  customer_name: 0.75
+  account_number: 0.80
+  payee: 0.75
+  payment_id: 0.70
+  payment_method: 0.75
+  payment_date: 0.80
+  invoice_number: 0.70
+  reference_doc_number: 0.70
+  amount_paid: 0.90   # Must be >= 0.85 — see research.md §Decision 11
+  currency: 0.75
+  deductions: 0.70
+  deduction_type: 0.70
+  notes: 0.70
+
+required_fields:
+  - amount_paid

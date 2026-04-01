@@ -35,6 +35,8 @@ def _defaults_from_env() -> dict:
         defaults["work_directory"] = val
     if val := os.getenv("REVIEW_DIRECTORY"):
         defaults["review_directory"] = val
+    if val := os.getenv("OUTPUT_DIRECTORY"):
+        defaults["output_directory"] = val
     return defaults
 
 

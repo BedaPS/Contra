@@ -93,3 +93,45 @@ export interface AgentToolCall {
   args: string;
   status: 'running' | 'completed';
 }
+
+// ── Doc Processing Batch AG-UI events (T030) ──────────────────────────────
+
+export interface BatchStartedEvent {
+  event: 'BATCH_STARTED';
+  batch_id: string;
+  total_files: number;
+}
+
+export interface FileStartedEvent {
+  event: 'FILE_STARTED';
+  batch_id: string;
+  filename: string;
+  index: number;
+}
+
+export interface FileCompletedEvent {
+  event: 'FILE_COMPLETED';
+  batch_id: string;
+  filename: string;
+  record_count: number;
+}
+
+export interface FileFailedEvent {
+  event: 'FILE_FAILED';
+  batch_id: string;
+  filename: string;
+  error: string;
+}
+
+export interface BatchCompletedEvent {
+  event: 'BATCH_COMPLETED';
+  batch_id: string;
+  total_records: number;
+}
+
+export type BatchEvent =
+  | BatchStartedEvent
+  | FileStartedEvent
+  | FileCompletedEvent
+  | FileFailedEvent
+  | BatchCompletedEvent;

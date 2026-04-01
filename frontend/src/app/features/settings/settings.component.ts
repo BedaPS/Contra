@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, signal, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 
@@ -11,6 +11,7 @@ interface LLMSettingsResponse {
   source_directory: string;
   work_directory: string;
   review_directory: string;
+  output_directory: string;
 }
 
 interface LLMSettingsPayload {
@@ -22,6 +23,7 @@ interface LLMSettingsPayload {
   source_directory: string;
   work_directory: string;
   review_directory: string;
+  output_directory: string;
 }
 
 @Component({
@@ -161,6 +163,17 @@ interface LLMSettingsPayload {
             placeholder="e.g. /data/review or C:\\Review"
           />
           <span class="hint">Shared directory where spreadsheets are placed for human review</span>
+        </div>
+
+        <div class="form-group">
+          <label for="outputDirectory">Output Directory</label>
+          <input
+            id="outputDirectory"
+            type="text"
+            [(ngModel)]="outputDirectory"
+            placeholder="e.g. /data/output or C:\\Output"
+          />
+          <span class="hint">Output directory where results.xlsx and accuracy.jsonl are written</span>
         </div>
       </div>
     </div>
@@ -305,6 +318,7 @@ interface LLMSettingsPayload {
 })
 export class SettingsComponent implements OnInit {
   private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
 
   providers = [
     { value: 'gemini', label: 'Google Gemini' },
@@ -323,6 +337,7 @@ export class SettingsComponent implements OnInit {
   sourceDirectory = '';
   workDirectory = '';
   reviewDirectory = '';
+  outputDirectory = '';
 
   apiKeySet = signal(false);
   saving = signal(false);
@@ -381,6 +396,7 @@ export class SettingsComponent implements OnInit {
       source_directory: this.sourceDirectory,
       work_directory: this.workDirectory,
       review_directory: this.reviewDirectory,
+      output_directory: this.outputDirectory,
     };
 
     this.http.put<LLMSettingsResponse>('/api/settings/llm', payload).subscribe({
@@ -400,7 +416,10 @@ export class SettingsComponent implements OnInit {
 
   private loadSettings(): void {
     this.http.get<LLMSettingsResponse>('/api/settings/llm').subscribe({
-      next: (res) => this.applyResponse(res),
+      next: (res) => {
+        this.applyResponse(res);
+        this.cdr.markForCheck();
+      },
       error: () => { /* defaults are fine */ },
     });
   }
@@ -414,6 +433,7 @@ export class SettingsComponent implements OnInit {
     this.sourceDirectory = res.source_directory;
     this.workDirectory = res.work_directory;
     this.reviewDirectory = res.review_directory;
+    this.outputDirectory = res.output_directory;
     if (!this.apiKey && res.api_key_set) {
       this.apiKey = '';
     }

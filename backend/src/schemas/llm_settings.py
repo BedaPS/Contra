@@ -35,19 +35,19 @@ class LLMSettings(BaseModel):
         description="Sampling temperature.",
     )
     source_directory: str = Field(
-        default="",
+        default="/app/data/source",
         description="Source directory where incoming payment proof files are placed.",
     )
     work_directory: str = Field(
-        default="",
+        default="/app/data/work",
         description="Work directory where files are copied for processing.",
     )
     review_directory: str = Field(
-        default="",
+        default="/app/data/review",
         description="Shared directory where spreadsheets are placed for human review.",
     )
     output_directory: str = Field(
-        default="",
+        default="/app/data/output",
         description="Output directory where results.xlsx and accuracy.jsonl are written.",
     )
 

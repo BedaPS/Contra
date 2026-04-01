@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { AgUiEventService } from '../../core/services/ag-ui-event.service';
 import { PipelineDocument } from '../../core/models/ag-ui.models';
@@ -280,10 +280,23 @@ export class DocumentReviewComponent implements OnInit {
   readonly reviewDocs = signal<PipelineDocument[]>([]);
   readonly resolvedDocs = signal<PipelineDocument[]>([]);
 
+  constructor() {
+    // Update documents from pipeline state in real time
+    effect(() => {
+      const state = this.svc.pipelineState();
+      if (state?.documents?.length) {
+        this.allDocs.set(state.documents as PipelineDocument[]);
+        this.updateFilteredDocs();
+      }
+    });
+  }
+
   async ngOnInit(): Promise<void> {
     const docs = await this.svc.loadDocuments();
-    this.allDocs.set(docs);
-    this.updateFilteredDocs();
+    if (docs.length > 0) {
+      this.allDocs.set(docs);
+      this.updateFilteredDocs();
+    }
   }
 
   onApprove(doc: PipelineDocument): void {

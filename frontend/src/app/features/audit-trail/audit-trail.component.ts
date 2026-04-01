@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, effect, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { inject } from '@angular/core';
 import { AgUiEventService } from '../../core/services/ag-ui-event.service';
@@ -272,7 +272,21 @@ export class AuditTrailComponent implements OnInit {
   readonly uniqueAgents = signal<string[]>([]);
   readonly filteredEntries = signal<AuditEntry[]>([]);
 
+  constructor() {
+    // Refresh audit entries when pipeline run finishes
+    effect(() => {
+      const running = this.svc.isRunning();
+      if (!running && this.entries().length >= 0) {
+        this.refreshEntries();
+      }
+    });
+  }
+
   async ngOnInit(): Promise<void> {
+    await this.refreshEntries();
+  }
+
+  private async refreshEntries(): Promise<void> {
     const data = await this.svc.loadAuditEntries();
     this.entries.set(data);
     this.uniqueAgents.set([...new Set(data.map(e => e.agent))]);

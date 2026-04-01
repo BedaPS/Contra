@@ -16,6 +16,8 @@ export interface PipelineState {
   completedSteps: string[];
   ocrConfidence?: Record<string, number>;
   matchResult?: MatchResult;
+  error?: string | null;
+  spreadsheetPath?: string | null;
 }
 
 export interface PipelineDocument {
@@ -30,6 +32,7 @@ export interface PipelineDocument {
   state: string;
   created_at?: string;
   review_reason?: string;
+  ocr_confidence?: Record<string, number>;
 }
 
 export interface MatchResult {

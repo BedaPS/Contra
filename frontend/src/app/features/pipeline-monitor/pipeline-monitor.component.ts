@@ -26,6 +26,14 @@ import { environment } from '../../../environments/environment';
         </div>
       </header>
 
+      <!-- Error banner -->
+      @if (svc.error()) {
+        <div class="error-banner">
+          <span class="error-icon">⚠</span>
+          <span>{{ svc.error() }}</span>
+        </div>
+      }
+
       <!-- Dynamic pipeline visualization -->
       @if (topologyLoaded()) {
         <div class="pipeline-track">
@@ -41,6 +49,11 @@ import { environment } from '../../../environments/environment';
                 }
               </div>
               <div class="stage-label">{{ node.label }}</div>
+              @if (node.id === 'build_spreadsheet' && isCompleted(node.label) && latestSpreadsheet()) {
+                <button class="stage-download" (click)="downloadSpreadsheet(latestSpreadsheet()!)" title="Download generated spreadsheet">
+                  📎
+                </button>
+              }
             </div>
             @if (!$last) {
               <div class="stage-connector" [class.completed]="isCompleted(node.label)"></div>
@@ -322,6 +335,32 @@ import { environment } from '../../../environments/environment';
 
     .stage.completed .stage-label { color: #2ecc71; }
     .stage.active .stage-label { color: #a29bfe; }
+
+    .stage-download {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 0.2rem;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      margin-top: 0.25rem;
+    }
+    .stage-download:hover { opacity: 1; }
+
+    .error-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #2a1010;
+      border: 1px solid #e74c3c;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      color: #e74c3c;
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+    .error-icon { font-size: 1.1rem; }
 
     .stage-connector {
       flex: 1;
@@ -727,6 +766,14 @@ export class PipelineMonitorComponent implements OnInit {
       const state = this.svc.pipelineState();
       if (state?.completedSteps?.includes('Build Spreadsheet')) {
         this.loadSpreadsheets();
+      }
+    });
+
+    // Update documents from STATE_SNAPSHOT during pipeline run
+    effect(() => {
+      const state = this.svc.pipelineState();
+      if (state?.documents?.length) {
+        this.documents.set(state.documents as PipelineDocument[]);
       }
     });
   }

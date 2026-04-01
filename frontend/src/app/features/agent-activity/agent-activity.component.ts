@@ -25,6 +25,22 @@ import { AgUiEventService } from '../../core/services/ag-ui-event.service';
         <div class="error-banner">{{ svc.error() }}</div>
       }
 
+      <!-- Failures & Errors -->
+      @if (svc.failures().length > 0) {
+        <div class="failures-section">
+          <h2>⚠ Failures &amp; Errors ({{ svc.failures().length }})</h2>
+          @for (failure of svc.failures(); track $index) {
+            <div class="failure-entry">
+              <span class="failure-time">{{ formatEventTime(failure.timestamp) }}</span>
+              @if (failure.stepName) {
+                <span class="failure-step">{{ formatAgentName(failure.stepName) }}</span>
+              }
+              <span class="failure-msg">{{ failure.message }}</span>
+            </div>
+          }
+        </div>
+      }
+
       <!-- Step timeline -->
       <div class="steps-timeline">
         @for (step of svc.steps(); track step.stepId) {
@@ -159,6 +175,48 @@ import { AgUiEventService } from '../../core/services/ag-ui-event.service';
       color: #e74c3c;
       font-size: 0.85rem;
       margin-bottom: 1.5rem;
+    }
+
+    .failures-section {
+      background: #1a0f0f;
+      border: 1px solid #4a2020;
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .failures-section h2 {
+      color: #e74c3c;
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 1rem;
+    }
+
+    .failure-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #2a1515;
+      font-size: 0.8rem;
+    }
+
+    .failure-time {
+      color: #555570;
+      white-space: nowrap;
+      font-family: monospace;
+      font-size: 0.7rem;
+    }
+
+    .failure-step {
+      color: #e74c3c;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .failure-msg {
+      color: #e0a0a0;
+      line-height: 1.4;
     }
 
     /* Step cards */

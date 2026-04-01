@@ -18,6 +18,7 @@ from typing import Any, AsyncGenerator
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
+from src.audit import logger as audit_log
 from src.graph.pipeline import get_pipeline
 from src.graph.state import ContraState
 
@@ -75,6 +76,43 @@ _NODE_LABELS = {
 }
 
 
+# Module-level cache of the last pipeline run's documents
+_last_run_documents: list[dict] = []
+
+
+def _safe_float(value: Any) -> float:
+    """Safely convert a value to float."""
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _field_value(field: Any, default: str = "") -> str:
+    """Extract 'value' from an OCR field that may be a dict, tuple, or primitive."""
+    if field is None:
+        return default
+    if isinstance(field, dict):
+        return str(field.get("value", default))
+    if isinstance(field, (tuple, list)) and len(field) > 0:
+        return str(field[0])
+    return str(field)
+
+
+def _field_confidence(field: Any) -> float:
+    """Extract confidence_score from an OCR field (dict, tuple, or primitive)."""
+    if isinstance(field, dict):
+        return float(field.get("confidence_score", 0))
+    if isinstance(field, (tuple, list)) and len(field) > 1:
+        try:
+            return float(field[1])
+        except (ValueError, TypeError):
+            return 0.0
+    return 0.0
+
+
 def _event(event_type: str, data: dict) -> str:
     """Format a single SSE event line."""
     payload = {"type": event_type, "timestamp": time.time(), **data}
@@ -106,18 +144,49 @@ def _state_snapshot(state: dict[str, Any], node_name: str) -> dict:
         if nid == current_node:
             break
 
-    return {
-        "documents": [{
+    # Build document list with flat fields extracted from ocr_fields
+    ocr_fields = state.get("ocr_fields", {})
+    file_records = state.get("file_records") or []
+    documents: list[dict[str, Any]] = []
+
+    if file_records:
+        for rec in file_records:
+            rf = rec.get("ocr_fields") or {} if isinstance(rec, dict) else {}
+            documents.append({
+                "document_id": rec.get("file_id", "") if isinstance(rec, dict) else "",
+                "state": rec.get("status", doc_state) if isinstance(rec, dict) else doc_state,
+                "source_email": state.get("source_email", ""),
+                "account_name": _field_value(rf.get("account_name")),
+                "amount": _safe_float(_field_value(rf.get("amount"), "0")),
+                "currency": _field_value(rf.get("currency"), "ZAR"),
+                "payment_date": _field_value(rf.get("payment_date")),
+                "bank_reference_id": _field_value(rf.get("bank_reference_id")) or None,
+                "attachment_mime_type": rec.get("mime_type", "") if isinstance(rec, dict) else "",
+                "ocr_confidence": {k: _field_confidence(v) for k, v in rf.items()},
+            })
+    else:
+        # Single-file / demo mode
+        documents.append({
             "document_id": state.get("document_id", ""),
             "state": doc_state,
             "source_email": state.get("source_email", ""),
-            "ocr_fields": state.get("ocr_fields", {}),
-        }],
+            "account_name": _field_value(ocr_fields.get("account_name")),
+            "amount": _safe_float(_field_value(ocr_fields.get("amount"), "0")),
+            "currency": _field_value(ocr_fields.get("currency"), "ZAR"),
+            "payment_date": _field_value(ocr_fields.get("payment_date")),
+            "bank_reference_id": _field_value(ocr_fields.get("bank_reference_id")) or None,
+            "attachment_mime_type": state.get("attachment_mime_type", ""),
+            "ocr_confidence": {k: _field_confidence(v) for k, v in ocr_fields.items()},
+        })
+
+    return {
+        "documents": documents,
         "currentStep": _NODE_LABELS.get(node_name, node_name),
         "pipeline": pipeline,
         "completedSteps": completed,
         "matchResult": state.get("match_result"),
         "error": state.get("error"),
+        "spreadsheetPath": state.get("review_spreadsheet_path") or state.get("spreadsheet_path"),
     }
 
 
@@ -126,6 +195,7 @@ async def _stream_graph_events(
     thread_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Run the LangGraph pipeline and yield AG-UI SSE events."""
+    global _last_run_documents
     pipeline = get_pipeline()
     run_id = str(uuid.uuid4())
     thread_id = thread_id or str(uuid.uuid4())
@@ -138,6 +208,10 @@ async def _stream_graph_events(
     try:
         for event in pipeline.stream(state_input, config=config, stream_mode="updates"):
             for node_name, node_output in event.items():
+                # Skip non-dict outputs (e.g. interrupt markers)
+                if not isinstance(node_output, dict):
+                    continue
+
                 step_id = str(uuid.uuid4())
                 step_label = _NODE_LABELS.get(node_name, node_name)
 
@@ -159,9 +233,9 @@ async def _stream_graph_events(
                 # Get the latest state snapshot from the graph
                 current_state = pipeline.get_state(config)
                 snapshot_values = current_state.values if current_state else node_output
-                yield _event("STATE_SNAPSHOT", {
-                    "snapshot": _state_snapshot(snapshot_values, node_name),
-                })
+                snapshot = _state_snapshot(snapshot_values, node_name)
+                _last_run_documents = snapshot["documents"]
+                yield _event("STATE_SNAPSHOT", {"snapshot": snapshot})
 
                 yield _event("STEP_FINISHED", {
                     "stepName": step_label,
@@ -224,12 +298,17 @@ async def resume_pipeline(thread_id: str, review: dict[str, Any]):
     config = {"configurable": {"thread_id": thread_id}}
 
     async def _stream_resume() -> AsyncGenerator[str, None]:
+        global _last_run_documents
         run_id = str(uuid.uuid4())
         yield _event("RUN_STARTED", {"runId": run_id, "threadId": thread_id})
 
         try:
             for event in pipeline.stream(Command(resume=review), config=config, stream_mode="updates"):
                 for node_name, node_output in event.items():
+                    # Skip non-dict outputs (e.g. interrupt markers)
+                    if not isinstance(node_output, dict):
+                        continue
+
                     step_id = str(uuid.uuid4())
                     step_label = _NODE_LABELS.get(node_name, node_name)
 
@@ -249,9 +328,9 @@ async def resume_pipeline(thread_id: str, review: dict[str, Any]):
 
                     current_state = pipeline.get_state(config)
                     snapshot_values = current_state.values if current_state else node_output
-                    yield _event("STATE_SNAPSHOT", {
-                        "snapshot": _state_snapshot(snapshot_values, node_name),
-                    })
+                    snapshot = _state_snapshot(snapshot_values, node_name)
+                    _last_run_documents = snapshot["documents"]
+                    yield _event("STATE_SNAPSHOT", {"snapshot": snapshot})
 
                     yield _event("STEP_FINISHED", {
                         "stepName": step_label,
@@ -296,125 +375,16 @@ async def resume_pipeline(thread_id: str, review: dict[str, Any]):
 
 
 # ---------------------------------------------------------------------------
-# Static mock data endpoints for the dashboard screens
+# Data endpoints — return real data from pipeline runs
 # ---------------------------------------------------------------------------
 
 @router.get("/documents")
 async def list_documents():
-    """Return mock documents at various pipeline stages."""
-    return [
-        {
-            "document_id": "DOC-2026-00142",
-            "source_email": "[REDACTED]",
-            "account_name": "ACME Corporation (Pty) Ltd",
-            "amount": 15750.00,
-            "currency": "ZAR",
-            "state": "Finalized",
-            "payment_date": "2026-03-20",
-            "created_at": "2026-03-20T08:14:22Z",
-        },
-        {
-            "document_id": "DOC-2026-00143",
-            "source_email": "[REDACTED]",
-            "account_name": "Globex International",
-            "amount": 22300.00,
-            "currency": "ZAR",
-            "state": "Needs_Review",
-            "payment_date": "2026-03-19",
-            "created_at": "2026-03-20T09:02:11Z",
-            "review_reason": "OCR confidence for amount field (0.72) below 0.85 threshold.",
-        },
-        {
-            "document_id": "DOC-2026-00144",
-            "source_email": "[REDACTED]",
-            "account_name": "Initech Systems",
-            "amount": 8400.00,
-            "currency": "ZAR",
-            "state": "Human_Review",
-            "payment_date": "2026-03-18",
-            "created_at": "2026-03-20T10:30:45Z",
-            "review_reason": "Duplicate bank transactions detected — both LOCKED pending human decision.",
-        },
-        {
-            "document_id": "DOC-2026-00145",
-            "source_email": "[REDACTED]",
-            "account_name": "Umbrella Corp",
-            "amount": 5200.00,
-            "currency": "ZAR",
-            "state": "Enriched",
-            "payment_date": "2026-03-21",
-            "created_at": "2026-03-21T07:45:00Z",
-        },
-        {
-            "document_id": "DOC-2026-00146",
-            "source_email": "[REDACTED]",
-            "account_name": "Stark Industries",
-            "amount": 42000.00,
-            "currency": "ZAR",
-            "state": "Matched",
-            "payment_date": "2026-03-21",
-            "created_at": "2026-03-21T11:20:33Z",
-        },
-    ]
+    """Return documents from the last pipeline run."""
+    return _last_run_documents
 
 
 @router.get("/audit/entries")
 async def list_audit_entries():
-    """Return mock audit trail entries."""
-    return [
-        {
-            "agent": "ingestion_agent",
-            "timestamp": "2026-03-20T08:14:22Z",
-            "input_hash": "a3f1c2...d4e5",
-            "output_hash": "b7c8d9...e0f1",
-            "state_from": "Ingested",
-            "state_to": "Parsed",
-            "decision": "ADVANCE",
-            "rationale": "MIME type application/pdf valid. All required fields present.",
-            "confidence_scores": {"account_name": 0.97, "amount": 0.99, "payment_date": 0.96},
-        },
-        {
-            "agent": "enrichment_agent",
-            "timestamp": "2026-03-20T08:14:23Z",
-            "input_hash": "b7c8d9...e0f1",
-            "output_hash": "c1d2e3...f4g5",
-            "state_from": "Parsed",
-            "state_to": "Enriched",
-            "decision": "ADVANCE",
-            "rationale": "Fields normalised. Amount cleaned, date standardised to ISO format.",
-            "confidence_scores": {},
-        },
-        {
-            "agent": "auditor_agent",
-            "timestamp": "2026-03-20T08:14:25Z",
-            "input_hash": "c1d2e3...f4g5",
-            "output_hash": "d5e6f7...g8h9",
-            "state_from": "Enriched",
-            "state_to": "Matched",
-            "decision": "MATCHED",
-            "rationale": "Bank Ref ID FNB-REF-8843921 exact match with BNK-TXN-991204. Delta $0.00.",
-            "confidence_scores": {"bank_ref_match": 1.0, "amount_match": 1.0},
-        },
-        {
-            "agent": "ocr_agent",
-            "timestamp": "2026-03-20T09:02:15Z",
-            "input_hash": "e3f4g5...h6i7",
-            "output_hash": "f7g8h9...i0j1",
-            "state_from": "Ingested",
-            "state_to": "Needs_Review",
-            "decision": "BLOCKED",
-            "rationale": "Field 'amount' confidence 0.72 below 0.85 threshold. Requires manual review.",
-            "confidence_scores": {"account_name": 0.91, "amount": 0.72, "payment_date": 0.88},
-        },
-        {
-            "agent": "auditor_agent",
-            "timestamp": "2026-03-20T10:30:50Z",
-            "input_hash": "g5h6i7...j8k9",
-            "output_hash": "h9i0j1...k2l3",
-            "state_from": "Enriched",
-            "state_to": "Human_Review",
-            "decision": "LOCKED",
-            "rationale": "Duplicate candidates: BNK-TXN-993401 and BNK-TXN-993402 identical. Both LOCKED.",
-            "confidence_scores": {"name_sim_1": 0.95, "name_sim_2": 0.95},
-        },
-    ]
+    """Return real audit trail entries from the pipeline."""
+    return [e.model_dump() for e in audit_log.entries()]

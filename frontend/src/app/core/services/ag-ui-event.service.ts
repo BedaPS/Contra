@@ -28,6 +28,7 @@ export class AgUiEventService {
   readonly messages = signal<AgentMessage[]>([]);
   readonly error = signal<string | null>(null);
   readonly hitlInterrupt = signal<Record<string, unknown> | null>(null);
+  readonly failures = signal<{message: string; timestamp: number; stepName?: string}[]>([]);
 
   // ── Batch processing signals (T033) ──
   /** True from BATCH_STARTED until BATCH_COMPLETED — disables the Run Pipeline button. */
@@ -96,6 +97,7 @@ export class AgUiEventService {
     this.messages.set([]);
     this.error.set(null);
     this.hitlInterrupt.set(null);
+    this.failures.set([]);
     this.activeMessages.clear();
     this.activeToolCalls.clear();
   }
@@ -226,6 +228,16 @@ export class AgUiEventService {
       case 'STATE_SNAPSHOT': {
         const snapshot = event['snapshot'] as PipelineState;
         this.pipelineState.set(snapshot);
+        if (snapshot.error) {
+          this.failures.update(prev => {
+            if (prev.some(f => f.message === snapshot.error)) return prev;
+            return [...prev, {
+              message: snapshot.error!,
+              timestamp: event['timestamp'] as number,
+              stepName: snapshot.currentStep,
+            }];
+          });
+        }
         break;
       }
 
@@ -240,12 +252,18 @@ export class AgUiEventService {
         this.eventSource = null;
         break;
 
-      case 'RUN_ERROR':
-        this.error.set((event['message'] as string) ?? 'Pipeline run failed');
+      case 'RUN_ERROR': {
+        const errorMsg = (event['error'] as string) ?? 'Pipeline run failed';
+        this.error.set(errorMsg);
+        this.failures.update(prev => [...prev, {
+          message: errorMsg,
+          timestamp: event['timestamp'] as number,
+        }]);
         this.isRunning.set(false);
         this.eventSource?.close();
         this.eventSource = null;
         break;
+      }
     }
   }
 

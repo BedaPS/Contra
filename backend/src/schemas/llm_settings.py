@@ -46,6 +46,10 @@ class LLMSettings(BaseModel):
         default="",
         description="Shared directory where spreadsheets are placed for human review.",
     )
+    output_directory: str = Field(
+        default="",
+        description="Output directory where results.xlsx and accuracy.jsonl are written.",
+    )
 
 
 class LLMSettingsResponse(BaseModel):
@@ -58,4 +62,5 @@ class LLMSettingsResponse(BaseModel):
     temperature: float
     source_directory: str
     work_directory: str
+    output_directory: str
     review_directory: str

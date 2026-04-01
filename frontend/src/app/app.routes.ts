@@ -11,6 +11,8 @@ export const routes: Routes = [
       { path: 'review', loadComponent: () => import('./features/document-review/document-review.component').then(m => m.DocumentReviewComponent) },
       { path: 'audit', loadComponent: () => import('./features/audit-trail/audit-trail.component').then(m => m.AuditTrailComponent) },
       { path: 'settings', loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent) },
+      { path: 'runs', loadComponent: () => import('./features/runs/runs.component').then(m => m.RunsComponent) },
+      { path: 'results', loadComponent: () => import('./features/results/results.component').then(m => m.ResultsComponent) },
     ],
   },
 ];

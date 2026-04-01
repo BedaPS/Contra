@@ -235,3 +235,7 @@ backend/contra_dev.db
 
 # LLM settings (contains API keys)
 backend/settings.json
+
+# Playwright test artifacts
+frontend/playwright-report/
+frontend/test-results/

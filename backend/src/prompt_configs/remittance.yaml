@@ -1,0 +1,38 @@
+context_hint: |
+  This document is a remittance advice. Extract all 14 payment fields precisely
+  from the remittance slip, including line items, totals, and reference numbers.
+  Remittance advices typically list one or more invoice payments with amounts.
+  Return ONLY valid JSON. No prose. The JSON must conform to the extraction schema.
+
+field_hints:
+  customer_name: "Full name of the customer or payer as printed on the remittance."
+  account_number: "Bank account number. Include all digits exactly as shown."
+  payee: "Name of the payment recipient / payee or supplier."
+  payment_id: "Any unique transaction or payment reference ID on the remittance."
+  payment_method: "Payment method: EFT, CASH, CHEQUE, DIRECT_DEPOSIT, or CARD."
+  payment_date: "Payment date in any format. Will be normalised to YYYY-MM-DD."
+  invoice_number: "Invoice number or document number being settled."
+  reference_doc_number: "Additional PO number or reference document number if present."
+  amount_paid: "Total payment amount as a numeric value. CRITICAL — must not be null."
+  currency: "ISO 4217 currency code or symbol (e.g. ZAR, USD, $)."
+  deductions: "Any deductions or adjustments applied to the gross amount."
+  deduction_type: "Reason for deductions (e.g. discount, rebate, withholding tax)."
+  notes: "Any additional notes, payment terms, or remarks on the remittance."
+
+confidence_thresholds:
+  customer_name: 0.75
+  account_number: 0.80
+  payee: 0.75
+  payment_id: 0.70
+  payment_method: 0.75
+  payment_date: 0.80
+  invoice_number: 0.70
+  reference_doc_number: 0.70
+  amount_paid: 0.90   # Must be >= 0.85 — see research.md §Decision 11
+  currency: 0.75
+  deductions: 0.70
+  deduction_type: 0.70
+  notes: 0.70
+
+required_fields:
+  - amount_paid

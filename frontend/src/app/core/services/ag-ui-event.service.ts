@@ -9,6 +9,7 @@ import {
   PipelineDocument,
   AuditEntry,
   PipelineTopology,
+  BatchEvent,
 } from '../models/ag-ui.models';
 
 /**
@@ -27,6 +28,13 @@ export class AgUiEventService {
   readonly messages = signal<AgentMessage[]>([]);
   readonly error = signal<string | null>(null);
   readonly hitlInterrupt = signal<Record<string, unknown> | null>(null);
+
+  // ── Batch processing signals (T033) ──
+  /** True from BATCH_STARTED until BATCH_COMPLETED — disables the Run Pipeline button. */
+  readonly isBatchRunning = signal(false);
+  readonly batchEvents = signal<BatchEvent[]>([]);
+  readonly filesProcessed = signal(0);
+  readonly totalBatchFiles = signal(0);
 
   // ── Computed ──
   readonly currentStep = computed(() => {
@@ -302,5 +310,46 @@ export class AgUiEventService {
       this.error.set('Resume connection failed');
       this.isRunning.set(false);
     });
+  }
+
+  // ── Batch processing methods (T033) ──────────────────────────────────────
+
+  /**
+   * Connect to the batch SSE stream for a given batchId.
+   * Sets isBatchRunning=true on BATCH_STARTED, false on BATCH_COMPLETED.
+   * Emits typed BatchEvents to the batchEvents signal.
+   */
+  connectToBatch(batchId: string): void {
+    this.isBatchRunning.set(true);
+    this.batchEvents.set([]);
+    this.filesProcessed.set(0);
+    this.totalBatchFiles.set(0);
+
+    const url = `${environment.apiBaseUrl}/runs/${encodeURIComponent(batchId)}/stream`;
+    const es = new EventSource(url);
+
+    es.onmessage = (msgEvent: MessageEvent) => {
+      const batchEvent: BatchEvent = JSON.parse(msgEvent.data);
+      this.batchEvents.update(prev => [...prev, batchEvent]);
+
+      switch (batchEvent.event) {
+        case 'BATCH_STARTED':
+          this.totalBatchFiles.set(batchEvent.total_files);
+          break;
+        case 'FILE_COMPLETED':
+        case 'FILE_FAILED':
+          this.filesProcessed.update(n => n + 1);
+          break;
+        case 'BATCH_COMPLETED':
+          this.isBatchRunning.set(false);
+          es.close();
+          break;
+      }
+    };
+
+    es.onerror = () => {
+      this.isBatchRunning.set(false);
+      es.close();
+    };
   }
 }

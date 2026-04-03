@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: '/api/v1',
+  apiBaseUrl: 'https://contra-backend.kindocean-e4017e1d.centralindia.azurecontainerapps.io/api/v1',
 };

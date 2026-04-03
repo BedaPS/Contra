@@ -802,6 +802,11 @@ export class PipelineMonitorComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // Clear stale state from any previous run so the visualization starts idle.
+    if (!this.svc.isRunning()) {
+      this.svc.reset();
+    }
+
     const [topology, docs] = await Promise.all([
       this.svc.loadTopology(),
       this.svc.loadDocuments(),
@@ -888,16 +893,19 @@ export class PipelineMonitorComponent implements OnInit {
   }
 
   isCompleted(label: string): boolean {
+    if (!this.svc.isRunning() && !this.svc.pipelineState()) return false;
     return this.svc.pipelineState()?.completedSteps?.includes(label) ?? false;
   }
 
   isActive(label: string): boolean {
+    if (!this.svc.isRunning()) return false;
     const state = this.svc.pipelineState();
     if (!state) return false;
+    // completedSteps from the backend includes the node that just finished;
+    // the NEXT node (at completedSteps.length) is the one currently in progress.
     const labels = this.pipelineNodes().map(n => n.label);
-    return state.currentStep !== undefined &&
-      !state.completedSteps.includes(label) &&
-      labels.indexOf(label) === state.completedSteps.length;
+    const idx = labels.indexOf(label);
+    return idx === state.completedSteps.length && !state.completedSteps.includes(label);
   }
 
   formatTime(ts: number): string {

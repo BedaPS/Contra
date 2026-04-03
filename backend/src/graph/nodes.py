@@ -52,37 +52,23 @@ def ingest_node(state: ContraState) -> dict[str, Any]:
     """Scan source directory for all matching files, copy each to work dir.
 
     Populates file_records with one entry per discovered file.
-    Falls back to single-file mode if source_file_path is set directly.
+    Requires SOURCE_DIRECTORY to be configured — fails with Error_Queue
+    if the setting is missing or the directory does not exist.
     """
     settings = load_settings()
     source_dir = settings.source_directory
     work_dir_str = settings.work_directory
     batch_id = state.get("batch_id") or f"BATCH-{uuid.uuid4().hex[:8].upper()}"
 
-    # If no source directory configured, fall back to single-file / demo mode
+    # SOURCE_DIRECTORY is required — no silent demo fallback.
     if not source_dir:
-        mime = state.get("attachment_mime_type", "")
-        doc_id = state.get("document_id") or str(uuid.uuid4())
-
-        if mime and mime not in _ALLOWED_MIME_TYPES:
-            _log_transition("ingestion_agent", state, "NEW", "Error_Queue",
-                            "ERROR", f"Invalid MIME type: {mime}")
-            return {
-                "document_id": doc_id,
-                "document_state": "Error_Queue",
-                "error": f"Invalid MIME type: {mime}",
-                "messages": [AIMessage(content=f"[ingestion_agent] Rejected — invalid MIME type: {mime}")],
-            }
-
-        _log_transition("ingestion_agent", state, "NEW", "Ingested",
-                        "OK", f"Document {doc_id} ingested (single-file / demo mode).")
+        _log_transition("ingestion_agent", state, "NEW", "Error_Queue",
+                        "ERROR", "SOURCE_DIRECTORY is not configured.")
         return {
-            "document_id": doc_id,
             "batch_id": batch_id,
-            "document_state": "Ingested",
-            "file_records": [],
-            "error": None,
-            "messages": [AIMessage(content=f"[ingestion_agent] Document {doc_id} ingested (demo mode).")],
+            "document_state": "Error_Queue",
+            "error": "SOURCE_DIRECTORY is not configured. Set it in Settings before running the pipeline.",
+            "messages": [AIMessage(content="[ingestion_agent] ERROR — SOURCE_DIRECTORY is not configured.")],
         }
 
     src_root = Path(source_dir)

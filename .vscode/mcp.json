@@ -1,0 +1,44 @@
+{
+  // MCP server configuration for the Contra project.
+  // Docs: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
+  "servers": {
+
+    // ── Browser automation (E2E testing, UI inspection) ────────────────────
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "env": {
+        "PLAYWRIGHT_BROWSERS_PATH": "0"
+      }
+    },
+
+    // ── Azure (resource management, deployments, Container Apps) ──────────
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest"]
+    },
+
+    // ── Angular CLI (generate components, run ng commands) ─────────────────
+    "angular-cli": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@angular/cli", "mcp"],
+      "cwd": "${workspaceFolder}/frontend"
+    },
+
+   
+    // ── File system (scoped to repo root — safe read/write) ───────────────
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${workspaceFolder}"
+      ]
+    }
+
+  }
+}

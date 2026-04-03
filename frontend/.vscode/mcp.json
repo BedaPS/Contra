@@ -1,7 +1,9 @@
 {
   // For more information, visit: https://angular.dev/ai/mcp
+  // Root-level .vscode/mcp.json has the full server list including Playwright and Azure.
   "servers": {
     "angular-cli": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "@angular/cli", "mcp"]
     }

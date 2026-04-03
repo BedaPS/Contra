@@ -38,11 +38,10 @@ export class LoginComponent implements OnInit {
   constructor(public authService: AuthService, private router: Router) {}
 
   ngOnInit(): void {
-    this.authService.initialize();
-
-    setTimeout(() => {
-      this.authService.renderButton(this.googleButton.nativeElement);
-    }, 100);
+    if (this.authService.isLoggedIn) {
+      this.router.navigate(['/pipeline']);
+      return;
+    }
 
     this.authService.user$.subscribe((user) => {
       this.isLoggingIn = false;
@@ -50,6 +49,20 @@ export class LoginComponent implements OnInit {
         this.router.navigate(['/pipeline']);
       }
     });
+
+    this.mountGoogleButton();
+  }
+
+  private mountGoogleButton(): void {
+    const tryMount = () => {
+      if (window.google?.accounts?.id) {
+        this.authService.initialize();
+        this.authService.renderButton(this.googleButton.nativeElement);
+      } else {
+        setTimeout(tryMount, 150);
+      }
+    };
+    tryMount();
   }
 
   logout(): void {

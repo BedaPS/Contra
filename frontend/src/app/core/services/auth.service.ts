@@ -127,8 +127,11 @@ export class AuthService {
     }
 
     try {
-      const payload = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
-      return JSON.parse(decodeURIComponent(escape(payload)));
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const binaryStr = atob(base64);
+      const bytes = Uint8Array.from(binaryStr, (c) => c.charCodeAt(0));
+      const json = new TextDecoder().decode(bytes);
+      return JSON.parse(json);
     } catch {
       return null;
     }

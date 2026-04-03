@@ -21,12 +21,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
+      # Override DATABASE_URL host to use the docker network service name
       DATABASE_URL: "mssql+pymssql://sa:Admin%401234@db:1433/contra"
-      LLM_PROVIDER: "stub"
-      LLM_API_KEY: ""
-      LLM_MODEL: ""
-      CORS_ORIGINS: "http://localhost:4200"
     depends_on:
       db:
         condition: service_healthy

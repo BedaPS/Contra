@@ -1,5 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { environment } from '../../../environments/environment';
+import { AuthService } from './auth.service';
 import {
   AgUiEvent,
   PipelineState,
@@ -47,6 +48,13 @@ export class AgUiEventService {
     this.steps().filter(s => s.status === 'completed')
   );
 
+  private readonly authService = inject(AuthService);
+
+  private authHeaders(): HeadersInit {
+    const token = this.authService.idToken;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   private eventSource: EventSource | null = null;
   private activeMessages = new Map<string, string>();
   private activeToolCalls = new Map<string, AgentToolCall>();
@@ -59,7 +67,8 @@ export class AgUiEventService {
     this.isRunning.set(true);
     this.error.set(null);
 
-    const url = `${environment.apiBaseUrl}/agents/stream`;
+    const token = this.authService.idToken;
+    const url = `${environment.apiBaseUrl}/agents/stream${token ? '?token=' + encodeURIComponent(token) : ''}`;
     this.eventSource = new EventSource(url);
 
     this.eventSource.onmessage = (event: MessageEvent) => {
@@ -270,17 +279,17 @@ export class AgUiEventService {
   // ── Static data loaders ──
 
   async loadDocuments(): Promise<PipelineDocument[]> {
-    const res = await fetch(`${environment.apiBaseUrl}/documents`);
+    const res = await fetch(`${environment.apiBaseUrl}/documents`, { headers: this.authHeaders() });
     return res.json();
   }
 
   async loadAuditEntries(): Promise<AuditEntry[]> {
-    const res = await fetch(`${environment.apiBaseUrl}/audit/entries`);
+    const res = await fetch(`${environment.apiBaseUrl}/audit/entries`, { headers: this.authHeaders() });
     return res.json();
   }
 
   async loadTopology(): Promise<PipelineTopology> {
-    const res = await fetch(`${environment.apiBaseUrl}/pipeline/topology`);
+    const res = await fetch(`${environment.apiBaseUrl}/pipeline/topology`, { headers: this.authHeaders() });
     return res.json();
   }
 
@@ -296,7 +305,7 @@ export class AgUiEventService {
 
     fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
       body: JSON.stringify(review),
     }).then(async (response) => {
       if (!response.ok || !response.body) {
@@ -343,7 +352,8 @@ export class AgUiEventService {
     this.filesProcessed.set(0);
     this.totalBatchFiles.set(0);
 
-    const url = `${environment.apiBaseUrl}/runs/${encodeURIComponent(batchId)}/stream`;
+    const token = this.authService.idToken;
+    const url = `${environment.apiBaseUrl}/runs/${encodeURIComponent(batchId)}/stream${token ? '?token=' + encodeURIComponent(token) : ''}`;
     const es = new EventSource(url);
 
     es.onmessage = (msgEvent: MessageEvent) => {

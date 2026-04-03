@@ -23,9 +23,6 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
-    environment:
-      # Override DATABASE_URL host to use the docker network service name
-      DATABASE_URL: "mssql+pymssql://sa:Admin%401234@db:1433/contra"
     depends_on:
       db:
         condition: service_healthy

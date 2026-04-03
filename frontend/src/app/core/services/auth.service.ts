@@ -31,6 +31,7 @@ declare global {
 export class AuthService {
   private readonly userSubject = new BehaviorSubject<AuthUser | null>(null);
   user$: Observable<AuthUser | null> = this.userSubject.asObservable();
+  private _gsiInitialized = false;
 
   constructor(private ngZone: NgZone) {
     this.tryRestoreSession();
@@ -49,6 +50,8 @@ export class AuthService {
   }
 
   initialize(): void {
+    if (this._gsiInitialized) return;
+
     const clientId = environment.googleClientId;
     if (!clientId || clientId === 'YOUR_GOOGLE_CLIENT_ID') {
       console.warn('Google client id is not configured in environment');
@@ -66,6 +69,7 @@ export class AuthService {
       callback: (response: any) => this.ngZone.run(() => this.handleCredentialResponse(response)),
       auto_select: false,
     });
+    this._gsiInitialized = true;
   }
 
   renderButton(host: HTMLElement): void {
